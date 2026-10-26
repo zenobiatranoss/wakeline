@@ -1,0 +1,109 @@
+{
+  "name": "wakeline",
+  "displayName": "wakeline",
+  "description": "time travel for a single function inside vs code",
+  "version": "0.1.0",
+  "publisher": "wakeline-dev",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "keywords": [
+    "debugger",
+    "time travel",
+    "python",
+    "javascript"
+  ],
+  "activationEvents": [
+    "onCommand:wakeline.recordThisFunction",
+    "onCommand:wakeline.stopRecording",
+    "onCommand:wakeline.openLastRecording",
+    "onCommand:wakeline.clearRecordings"
+  ],
+  "main": "out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "wakeline.recordThisFunction",
+        "title": "Record this function"
+      },
+      {
+        "command": "wakeline.stopRecording",
+        "title": "Stop recording"
+      },
+      {
+        "command": "wakeline.openLastRecording",
+        "title": "Open last recording"
+      },
+      {
+        "command": "wakeline.clearRecordings",
+        "title": "Clear recordings"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "wakeline.recordThisFunction",
+          "when": "editorLangId == python || editorLangId == javascript",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "wakeline",
+      "type": "object",
+      "properties": {
+        "wakeline.maxCalls": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 1,
+          "description": "maximum number of calls to record per recording"
+        },
+        "wakeline.maxEvents": {
+          "type": "integer",
+          "default": 10000,
+          "minimum": 1,
+          "description": "maximum events to record per call"
+        },
+        "wakeline.maxBytes": {
+          "type": "integer",
+          "default": 10485760,
+          "minimum": 1024,
+          "description": "maximum size of a recording file in bytes"
+        },
+        "wakeline.timeout": {
+          "type": "integer",
+          "default": 300000,
+          "minimum": 1000,
+          "description": "kill the recorded program after this many milliseconds"
+        },
+        "wakeline.retention": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 1,
+          "description": "number of recordings kept per function"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --target=node18 --outfile=out/extension.js --external:vscode --sourcemap",
+    "watch": "npm run build -- --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "check": "npm run typecheck && npm run lint"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.0.0",
+    "typescript": "^5.5.0"
+  }
+}
