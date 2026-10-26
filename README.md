@@ -1,5 +1,7 @@
 # wakeline
 
+under build. nothing here records anything yet.
+
 time travel for a single function inside vs code.
 
 right-click a function, choose "record this function", then run your program normally. wakeline records every
@@ -11,8 +13,8 @@ and nothing else.
 
 ## status
 
-early. this repo is being built in stages; see `docs/roadmap.md` and `docs/progress.md` for what exists today.
-nothing here records anything yet.
+stage 1 of 8 is done: design docs and extension scaffolding. the recorders are empty and the commands only say
+they are not implemented yet. see `docs/progress.md` for what exists and `docs/roadmap.md` for the plan.
 
 ## design
 
