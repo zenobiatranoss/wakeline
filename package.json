@@ -4,7 +4,12 @@
   "description": "time travel for a single function inside vs code",
   "version": "0.1.0",
   "publisher": "wakeline-dev",
+  "icon": "media/icon.png",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zenobiatranoss/wakeline.git"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -16,60 +21,141 @@
     "debugger",
     "time travel",
     "python",
-    "javascript"
+    "javascript",
+    "typescript",
+    "go",
+    "csharp",
+    "c++"
   ],
   "activationEvents": [
-    "onCommand:wakeline.recordThisFunction",
-    "onCommand:wakeline.stopRecording",
-    "onCommand:wakeline.openLastRecording",
-    "onCommand:wakeline.clearRecordings"
+    "onCommand:wakeline.record_this_function",
+    "onCommand:wakeline.stop_recording",
+    "onCommand:wakeline.open_last_recording",
+    "onCommand:wakeline.clear_recordings"
   ],
   "main": "out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "wakeline.recordThisFunction",
-        "title": "Record this function"
+        "command": "wakeline.record_this_function",
+        "title": "record this function"
       },
       {
-        "command": "wakeline.stopRecording",
-        "title": "Stop recording"
+        "command": "wakeline.stop_recording",
+        "title": "stop recording"
       },
       {
-        "command": "wakeline.openLastRecording",
-        "title": "Open last recording"
+        "command": "wakeline.open_last_recording",
+        "title": "open last recording"
       },
       {
-        "command": "wakeline.clearRecordings",
-        "title": "Clear recordings"
+        "command": "wakeline.clear_recordings",
+        "title": "clear recordings"
+      },
+      {
+        "command": "wakeline.step_back",
+        "title": "step back"
+      },
+      {
+        "command": "wakeline.step_forward",
+        "title": "step forward"
+      },
+      {
+        "command": "wakeline.jump_to_divergence",
+        "title": "jump to divergence"
+      },
+      {
+        "command": "wakeline.play_pause",
+        "title": "play or pause"
+      },
+      {
+        "command": "wakeline.compare_previous",
+        "title": "compare with previous call"
+      },
+      {
+        "command": "wakeline.compare_with_call",
+        "title": "compare with call id"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "wakeline.recordThisFunction",
-          "when": "editorLangId == python || editorLangId == javascript",
+          "command": "wakeline.record_this_function",
+          "when": "editorLangId == python || editorLangId == javascript || editorLangId == typescript || editorLangId == go || editorLangId == csharp || editorLangId == cpp",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "wakeline.step_back",
+          "when": "wakeline.timeline_open"
+        },
+        {
+          "command": "wakeline.step_forward",
+          "when": "wakeline.timeline_open"
+        },
+        {
+          "command": "wakeline.jump_to_divergence",
+          "when": "wakeline.timeline_open"
+        },
+        {
+          "command": "wakeline.play_pause",
+          "when": "wakeline.timeline_open"
+        },
+        {
+          "command": "wakeline.compare_previous",
+          "when": "wakeline.timeline_open"
+        },
+        {
+          "command": "wakeline.compare_with_call",
+          "when": "wakeline.timeline_open"
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "wakeline.step_back",
+        "key": "alt+left",
+        "when": "wakeline.timeline_open"
+      },
+      {
+        "command": "wakeline.step_forward",
+        "key": "alt+right",
+        "when": "wakeline.timeline_open"
+      },
+      {
+        "command": "wakeline.play_pause",
+        "key": "alt+p",
+        "when": "wakeline.timeline_open"
+      },
+      {
+        "command": "wakeline.compare_previous",
+        "key": "alt+c",
+        "when": "wakeline.timeline_open"
+      },
+      {
+        "command": "wakeline.jump_to_divergence",
+        "key": "alt+d",
+        "when": "wakeline.timeline_open"
+      }
+    ],
     "configuration": {
       "title": "wakeline",
       "type": "object",
       "properties": {
-        "wakeline.maxCalls": {
+        "wakeline.max_calls": {
           "type": "integer",
           "default": 100,
           "minimum": 1,
           "description": "maximum number of calls to record per recording"
         },
-        "wakeline.maxEvents": {
+        "wakeline.max_events": {
           "type": "integer",
           "default": 10000,
           "minimum": 1,
-          "description": "maximum events to record per call"
+          "description": "maximum line events to record per call"
         },
-        "wakeline.maxBytes": {
+        "wakeline.max_bytes": {
           "type": "integer",
           "default": 10485760,
           "minimum": 1024,
@@ -79,29 +165,95 @@
           "type": "integer",
           "default": 300000,
           "minimum": 1000,
-          "description": "kill the recorded program after this many milliseconds"
+          "description": "stop the recorded program after this many milliseconds"
         },
         "wakeline.retention": {
           "type": "integer",
           "default": 10,
           "minimum": 1,
-          "description": "number of recordings kept per function"
+          "description": "recordings kept per function"
+        },
+        "wakeline.python_path": {
+          "type": "string",
+          "default": "",
+          "description": "python interpreter path or command name; empty means look on path"
+        },
+        "wakeline.node_path": {
+          "type": "string",
+          "default": "",
+          "description": "node executable path or command name; empty means look on path"
+        },
+        "wakeline.go_path": {
+          "type": "string",
+          "default": "",
+          "description": "go executable path or command name; empty means look on path"
+        },
+        "wakeline.cpp_compiler": {
+          "type": "string",
+          "default": "",
+          "description": "c++ compiler for the debugger driver; empty means g++"
+        },
+        "wakeline.cpp_gdb": {
+          "type": "string",
+          "default": "",
+          "description": "gdb path for the c++ driver; empty means gdb"
+        },
+        "wakeline.csharp_compiler": {
+          "type": "string",
+          "default": "",
+          "description": "c# compiler for the mono driver; empty means mcs"
+        },
+        "wakeline.csharp_runtime": {
+          "type": "string",
+          "default": "",
+          "description": "mono runtime path; empty means mono"
+        },
+        "wakeline.run_args": {
+          "type": "string",
+          "default": "",
+          "description": "arguments passed to the recorded program"
+        },
+        "wakeline.variable_masking": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "variable names or glob patterns whose values are hidden in recordings"
+        },
+        "wakeline.compare_ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "variable names or glob patterns ignored when comparing calls"
         }
       }
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --target=node18 --outfile=out/extension.js --external:vscode --sourcemap",
-    "watch": "npm run build -- --watch",
+    "build:extension": "esbuild src/extension.ts --bundle --platform=node --target=node18 --outfile=out/extension.js --external:vscode --sourcemap",
+    "build:webview": "esbuild webview/timeline.ts --bundle --platform=browser --target=es2020 --outfile=out/webview.js",
+    "build:recorder": "esbuild recorders/javascript/core.js --bundle --platform=node --target=node18 --format=cjs --outfile=recorders/javascript/core.cjs",
+    "build": "npm run build:extension && npm run build:webview && npm run build:recorder",
+    "watch": "npm run build:extension -- --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "check": "npm run typecheck && npm run lint"
+    "check": "npm run typecheck && npm run lint",
+    "test:python": "python3 -m unittest discover -s test/python -p \"test_*.py\"",
+    "test:ts": "tsc -p tsconfig.test.json && node --test out-test/test/compare.test.js out-test/test/format.test.js out-test/test/recorder.test.js out-test/test/run.test.js out-test/test/text_find.test.js",
+    "test": "npm run build:recorder && npm run test:python && npm run test:ts",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.80.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "@vscode/vsce": "^3.9.2",
+    "acorn": "^8.19.0",
     "esbuild": "^0.28.2",
     "eslint": "^9.0.0",
     "typescript": "^5.5.0"
