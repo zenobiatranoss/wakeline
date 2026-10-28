@@ -285,7 +285,7 @@ function cpp_function(text: string, at: number): found_function | null {
     for (const m of text.matchAll(re)) {
       const name = m[1];
       if (cpp_skip.has(name)) continue;
-      const brace = m.index + m[0].lastIndexOf('{');
+      const brace = m.index + m[0].lastIndexOf("{");
       const close = match_brace(text, brace);
       if (close < 0) continue;
       out.push({ name, start: line_at(text, m.index), end: line_at(text, close) });
