@@ -113,19 +113,23 @@ export function activate(context: vscode.ExtensionContext) {
 
   void ensure_dir(store);
   try {
-    const { WakelineCodeLensProvider } = require('./codelens');
-    const sel = vscode.languages.registerCodeLensProvider(['python','javascript','typescript','go','csharp','cpp'], new WakelineCodeLensProvider());
+    const mod = await import("./codelens");
+    const sel = vscode.languages.registerCodeLensProvider(["python", "javascript", "typescript", "go", "csharp", "cpp"], new mod.WakelineCodeLensProvider());
     context.subscriptions.push(sel);
-  } catch (e) {}
+  } catch {
+    // ignore
+  }
   try {
-    context.subscriptions.push(vscode.commands.registerCommand('wakeline.record_at_cursor', async () => { await record_this_function(); }));
-    context.subscriptions.push(vscode.commands.registerCommand('wakeline.record_at_line', async (line?: number) => {
+    context.subscriptions.push(vscode.commands.registerCommand("wakeline.record_at_cursor", async () => { await record_this_function(); }));
+    context.subscriptions.push(vscode.commands.registerCommand("wakeline.record_at_line", async (line?: number) => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || line === undefined || line === null) return;
       editor.selection = new vscode.Selection(line, 0, line, 0);
       await record_this_function();
     }));
-  } catch (e) {}
+  } catch {
+    // ignore
+  }
 }
 
 
