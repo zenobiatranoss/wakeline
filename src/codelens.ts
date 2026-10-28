@@ -13,15 +13,15 @@ export class WakelineCodeLensProvider implements vscode.CodeLensProvider {
       return lenses;
     }
     let regex: RegExp | null = null;
-    if (lang === 'python') {
+    if (lang === "python") {
       regex = /^\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/gm;
-    } else if (lang === 'javascript' || lang === 'typescript') {
+    } else if (lang === "javascript" || lang === "typescript") {
       regex = /^\s*(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/gm;
-    } else if (lang === 'go') {
+    } else if (lang === "go") {
       regex = /^\s*func\s+(?:\([^)]+\)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/gm;
-    } else if (lang === 'csharp') {
+    } else if (lang === "csharp") {
       regex = /^\s*(?:public|private|protected|internal|static|async|override|virtual|sealed|new|\s)+[^\n{;]+\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^;{]*\)\s*\{/gm;
-    } else if (lang === 'cpp') {
+    } else if (lang === "cpp") {
       regex = /^\s*(?:[^\n;{=]*\b)([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^;{]*\)\s*(?:const\s*)?\{/gm;
     }
     if (!regex) return lenses;
@@ -29,13 +29,13 @@ export class WakelineCodeLensProvider implements vscode.CodeLensProvider {
     while ((m = regex.exec(text)) !== null) {
       const name = m[1];
       if (!name) continue;
-      if (['if','for','while','switch','catch','try','else'].includes(name)) continue;
+      if (["if","for","while","switch","catch","try","else"].includes(name)) continue;
       const pos = document.positionAt(m.index);
       const range = new vscode.Range(pos, pos);
       const lens = new vscode.CodeLens(range, {
-        title: '$(play) wakeline: record',
-        tooltip: 'record this function with wakeline',
-        command: 'wakeline.record_at_line',
+        title: "$(play) wakeline: record",
+        tooltip: "record this function with wakeline",
+        command: "wakeline.record_at_line",
         arguments: [pos.line]
       });
       lenses.push(lens);
