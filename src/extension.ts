@@ -1,7 +1,6 @@
 import * as fsp from "fs/promises";
 import * as path from "path";
 import * as vscode from "vscode";
-import { languages as langs_table } from "./languages";
 import { clear_all, dispose_decorations, render_call } from "./decorations";
 import { format_error, type index_result } from "./format";
 import { find_function } from "./function_find";
@@ -58,8 +57,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // tiny wrapper so the block below reads like a list of commands instead of
   // a wall of registerCommand(...) calls.
-  const register = (id: string, fn: (...args: unknown[]) => unknown) =>
-    vscode.commands.registerCommand(id, fn);
+  const register = (id: string, fn: any) =>
+    vscode.commands.registerCommand(id, fn as any);
 
   context.subscriptions.push(
     output,
@@ -477,4 +476,3 @@ async function interpreter(language: string, conf: settings) {
   );
 }
 
-import { WakelineCodeLensProvider } from "./codelens";
