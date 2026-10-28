@@ -113,7 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   void ensure_dir(store);
   try {
-    const mod = await import("./codelens");
+    const mod = require("./codelens");
     const sel = vscode.languages.registerCodeLensProvider(["python", "javascript", "typescript", "go", "csharp", "cpp"], new mod.WakelineCodeLensProvider());
     context.subscriptions.push(sel);
   } catch {
