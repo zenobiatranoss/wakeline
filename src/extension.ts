@@ -1,6 +1,7 @@
 import * as fsp from "fs/promises";
 import * as path from "path";
 import * as vscode from "vscode";
+import { languages as langs_table } from "./languages";
 import { clear_all, dispose_decorations, render_call } from "./decorations";
 import { format_error, type index_result } from "./format";
 import { find_function } from "./function_find";
@@ -63,6 +64,29 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     output,
     status,
+    register("wakeline.record_at_name", async (name?: string, uri?: vscode.Uri) => {
+      if (uri) {
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc);
+      }
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+      const doc2 = editor.document;
+      const found = await find_function(doc2, editor.selection.active.line);
+      if (found) {
+        await record_now();
+        return;
+      }
+      // try to find by name
+      const text = doc2.getText();
+      const idx = text.indexOf(name || "");
+      if (idx >= 0) {
+        const pos = doc2.positionAt(idx);
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos));
+        await record_now();
+      }
+    }),
     register("wakeline.record_this_function", record_this_function),
     register("wakeline.stop_recording", stop_recording),
     register("wakeline.open_last_recording", open_last_recording),
@@ -89,7 +113,23 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   void ensure_dir(store);
+  try {
+    const { WakelineCodeLensProvider } = require('./codelens');
+    const sel = vscode.languages.registerCodeLensProvider(['python','javascript','typescript','go','csharp','cpp'], new WakelineCodeLensProvider());
+    context.subscriptions.push(sel);
+  } catch (e) {}
+  try {
+    context.subscriptions.push(vscode.commands.registerCommand('wakeline.record_at_cursor', async () => { await record_this_function(); }));
+    context.subscriptions.push(vscode.commands.registerCommand('wakeline.record_at_line', async (line?: number) => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || line === undefined || line === null) return;
+      editor.selection = new vscode.Selection(line, 0, line, 0);
+      await record_this_function();
+    }));
+  } catch (e) {}
 }
+
+
 
 export function deactivate() {
   // closing the window mid-recording should not leave the user's program
@@ -436,3 +476,5 @@ async function interpreter(language: string, conf: settings) {
     find_executable(conf.python_path, ["python3", "python"])
   );
 }
+
+import { WakelineCodeLensProvider } from "./codelens";

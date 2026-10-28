@@ -18,19 +18,35 @@ every line has a `k` field naming its kind. the first line is always the version
 
 must be the first line. nothing else may precede it.
 
+### meta
+
+```json
+{"k":"meta","src":"/home/me/proj/sample.py","sm":1700000000000}
+```
+
+written once, right after the version line, before any call.
+
+- `src` absolute path of the file that holds the recorded function
+- `sm` modification time of that file in unix epoch milliseconds, when the file can be stat'ed
+
+the editor compares `src` and `sm` with the open document to warn when the recording no longer matches the code.
+`sm` is optional; a recorder that cannot read the mtime still writes `src`.
+
 ### call start
 
 ```json
-{"k":"call_start","i":"c1","f":"sample.add","l0":1,"l1":3,"dp":0,"a":[2,3],"t":1700000000123}
+{"k":"call_start","i":"c1","f":"sample.add","l0":1,"l1":3,"dp":0,"a":{"a":2,"b":3},"t":1700000000123}
 ```
 
 - `i` call id, unique within the file, short and stable
 - `f` qualified function name
 - `l0`, `l1` first and last source line of the function, 1-based
 - `dp` call depth, 0 for a call made from outside the function, 1 for a direct recursive call
-- `a` arguments as encoded values, one per positional parameter
+- `a` arguments as a map from bound parameter name to encoded value, including keyword-only, `*args`, and
+  `**kwargs` bindings
 - `t` start time, unix epoch milliseconds
 
+parameter order is not carried in `a`; readers that need it use the source, and sort map keys only for display.
 call ids are opaque strings. recorders may use `c1`, `c2`, or anything else, as long as every event refers to
 the id of the call it belongs to.
 
@@ -86,6 +102,18 @@ threw out of the call:
 a recursive call is its own call record. it starts and ends between the parent's line events, so the file
 interleaves records. `i` and `dp` make the nesting unambiguous.
 
+### generators and coroutines
+
+a generator or coroutine is one call from first resume to final completion, not one call per resume. python
+re-fires a `call` event every time a suspended frame is resumed; the recorder recognizes the already traced frame
+and continues the same call id and step counter. a suspension is not a `call_end`; only a final `return`,
+`throw`, or cap ends the call.
+
+`call_end` for a python generator that finishes normally reports `o` as `"return"` and `r` as `null`, because
+python raises `StopIteration` with no value. a javascript generator has no return value either, so its `r` is
+`{"$":"undefined"}`. `StopIteration` and `StopAsyncIteration` raised by the interpreter at a suspension point
+are not recorded as `exception` markers.
+
 ### cap hit
 
 ```json
@@ -93,10 +121,29 @@ interleaves records. `i` and `dp` make the nesting unambiguous.
 ```
 
 - `r` one of `max_calls`, `max_events`, `max_bytes`
+- `i` the call that hit the cap, when a single call owns the cap
 - `s` steps written for this call when the cap hit
 - `b` bytes written to the file when the cap hit
 
-written immediately before the recorder stops tracing. the user's program is never stopped by a cap.
+`max_events` applies per call, so every call that reaches the limit writes its own `cap_hit` with its own `i`.
+`max_calls` and `max_bytes` apply to the whole recording; their marker may omit `i` because no single call owns
+the stop. a global marker is written once, immediately before the recorder stops tracing. the user's program is
+never stopped by a cap; only tracing is.
+
+a call that hits a cap still gets a `call_end` with `c` naming the cap, unless the process is killed or the byte
+bound stops tracing mid-call. bytes are counted as they are written, so a file can overshoot `max_bytes` by at
+most one line. a recording may therefore end with a `cap_hit` and no `call_end`; readers mark that call
+interrupted.
+
+### failure
+
+```json
+{"k":"failure","why":"disk is full","where":"write"}
+```
+
+the recorder itself failed and stopped. the user's program keeps running. `why` is a short message, truncated to
+500 characters; `where` is optional and names the stage (`install`, `write`, `trace`). a reader shows the failure
+instead of pretending the recording is complete.
 
 ### truncated
 
@@ -107,10 +154,15 @@ written immediately before the recorder stops tracing. the user's program is nev
 an event existed but was dropped because it exceeded a per-event size bound. `s` is the step it would have had.
 individual values are truncated in place with the value encoding below, not with this line.
 
+version 1 reserves this kind, but the v0.1 recorders do not emit it. they bound each value and rely on the
+reader's 4 MiB line limit. a line that still exceeds that limit makes the reader refuse the file; see
+known limits in `docs/audit.md`.
+
 ## values
 
-json primitives are used directly when they fit: `null`, `true`, `false`, and numbers that are finite and within
-the safe integer range. everything else is an object with a `$` field.
+json primitives are used directly when they fit: `null`, `true`, `false`, and finite numbers. an integer outside
+the safe range gets the `int` shape because plain json would lose its value. everything else is an object with a
+`$` field.
 
 | shape | meaning |
 | --- | --- |
@@ -126,13 +178,15 @@ the safe integer range. everything else is an object with a `$` field.
 | `{"$":"ref","id":1}` | second sighting of an already encoded object |
 | `{"$":"opaque","cls":"file","why":"repr failed"}` | value that cannot be read safely |
 | `{"$":"trunc","why":"depth"}` | value cut before it could be encoded |
-| `{"$":"fn","name":"f"}` | function, symbol, or other callable |
+| `{"$":"fn","name":"f"}` | function, class, or other callable |
 | `{"$":"error","cls":"TypeError","m":"boom"}` | error object |
 
 `id` is assigned on first sighting of a non-primitive within a call, starting at 1. a second sighting becomes a
-`ref`, which is how cycles are represented and how shared objects stay shared in the ui.
+`ref`, which is how cycles are represented and how shared objects stay shared in the ui. a container hit by the
+budget before an id could be assigned omits `id`; it cannot be referenced later, which is fine because no later
+sighting of it is written either.
 
-`why` on `trunc` is one of `depth`, `items`, `string`, `bytes`, `error`.
+`why` on `trunc` is `depth`, `bytes`, or `error` in v0.1. the other limits use `cut` on the encoded value instead.
 
 default bounds, all configurable in the recorder:
 
@@ -160,7 +214,8 @@ call `add(2, 3)`:
 
 ```json
 {"k":"ver","v":1}
-{"k":"call_start","i":"c1","f":"sample.add","l0":1,"l1":3,"dp":0,"a":[2,3],"t":1700000000123}
+{"k":"meta","src":"/home/me/proj/sample.py","sm":1700000000100}
+{"k":"call_start","i":"c1","f":"sample.add","l0":1,"l1":3,"dp":0,"a":{"a":2,"b":3},"t":1700000000123}
 {"k":"line","i":"c1","s":0,"l":2,"v":{"a":2,"b":3}}
 {"k":"line","i":"c1","s":1,"l":3,"v":{"a":2,"b":3,"total":5}}
 {"k":"call_end","i":"c1","s":1,"o":"return","r":5,"ms":1,"c":"none"}
@@ -181,13 +236,14 @@ call `fact(3)`, written in execution order:
 
 ```json
 {"k":"ver","v":1}
-{"k":"call_start","i":"c1","f":"sample.fact","l0":1,"l1":4,"dp":0,"a":[3],"t":1700000000200}
+{"k":"meta","src":"/home/me/proj/sample.py","sm":1700000000150}
+{"k":"call_start","i":"c1","f":"sample.fact","l0":1,"l1":4,"dp":0,"a":{"n":3},"t":1700000000200}
 {"k":"line","i":"c1","s":0,"l":2,"v":{"n":3}}
 {"k":"line","i":"c1","s":1,"l":4,"v":{"n":3}}
-{"k":"call_start","i":"c2","f":"sample.fact","l0":1,"l1":4,"dp":1,"a":[2],"t":1700000000201}
+{"k":"call_start","i":"c2","f":"sample.fact","l0":1,"l1":4,"dp":1,"a":{"n":2},"t":1700000000201}
 {"k":"line","i":"c2","s":0,"l":2,"v":{"n":2}}
 {"k":"line","i":"c2","s":1,"l":4,"v":{"n":2}}
-{"k":"call_start","i":"c3","f":"sample.fact","l0":1,"l1":4,"dp":2,"a":[1],"t":1700000000202}
+{"k":"call_start","i":"c3","f":"sample.fact","l0":1,"l1":4,"dp":2,"a":{"n":1},"t":1700000000202}
 {"k":"line","i":"c3","s":0,"l":2,"v":{"n":1}}
 {"k":"line","i":"c3","s":1,"l":3,"v":{"n":1}}
 {"k":"call_end","i":"c3","s":1,"o":"return","r":1,"ms":0,"c":"none"}
@@ -211,7 +267,8 @@ call `divide(1, 0)`:
 
 ```json
 {"k":"ver","v":1}
-{"k":"call_start","i":"c1","f":"sample.divide","l0":1,"l1":2,"dp":0,"a":[1,0],"t":1700000000300}
+{"k":"meta","src":"/home/me/proj/sample.py","sm":1700000000250}
+{"k":"call_start","i":"c1","f":"sample.divide","l0":1,"l1":2,"dp":0,"a":{"a":1,"b":0},"t":1700000000300}
 {"k":"line","i":"c1","s":0,"l":2,"v":{"a":1,"b":0}}
 {"k":"exception","i":"c1","x":{"t":"ZeroDivisionError","m":"division by zero","s":["sample.py:2 in divide"]}}
 {"k":"call_end","i":"c1","s":0,"o":"throw","x":{"t":"ZeroDivisionError","m":"division by zero","s":["sample.py:2 in divide"]},"ms":0,"c":"none"}
@@ -221,7 +278,8 @@ call `divide(1, 0)`:
 
 ```json
 {"k":"ver","v":1}
-{"k":"call_start","i":"c1","f":"sample.report","l0":10,"l1":20,"dp":0,"a":[{"$":"list","id":1,"v":[1,2,3],"n":3,"cut":false}],"t":1700000000400}
+{"k":"meta","src":"/home/me/proj/sample.py","sm":1700000000350}
+{"k":"call_start","i":"c1","f":"sample.report","l0":10,"l1":20,"dp":0,"a":{"rows":{"$":"list","id":1,"v":[1,2,3],"n":3,"cut":false}},"t":1700000000400}
 {"k":"line","i":"c1","s":0,"l":11,"v":{"rows":{"$":"list","id":2,"v":[1,2,3,4,5],"n":100000,"cut":true},"again":{"$":"ref","id":2},"blob":{"$":"bytes","v":"aaec","n":1048576,"cut":true},"deep":{"$":"trunc","why":"depth"}}}
 {"k":"line","i":"c1","s":1,"l":12,"v":{"rows":{"$":"ref","id":2},"total":42}}
 {"k":"cap_hit","i":"c1","r":"max_events","s":1,"b":524288}
@@ -234,9 +292,9 @@ call `divide(1, 0)`:
   supports, with a message naming both versions.
 - within the same major version, new line kinds and new fields may be added. readers ignore unknown `k` lines
   and unknown fields inside known lines.
-- unknown `$` value shapes are rendered as opaque with the raw shape preserved, never as a crash.
+- unknown `$` value shapes are shown by name, never treated as a crash.
 - a reader must tolerate a file whose last line is incomplete, because a recorder can be killed mid-write. that
   line is dropped.
 - a `call_start` without a matching `call_end` is shown as interrupted, not silently discarded.
-- a recorder must never write a line longer than the per-event bound. if an event would exceed it, it writes a
-  `truncated` line instead.
+- a recorder should not write a line longer than the per-event bound. v0.1 recorders do not emit `truncated`
+  lines, and a reader that sees a line over 4 MiB refuses the whole file.

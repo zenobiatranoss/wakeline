@@ -105,6 +105,8 @@ func main() {
 	if err != nil {
 		fail("cannot read dir", 2)
 	}
+	hasMain := false
+	var origPkg string
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -118,23 +120,79 @@ func main() {
 		if err != nil {
 			continue
 		}
+		sbody := string(b)
+		if strings.Contains(sbody, "func main()") {
+			hasMain = true
+		}
+		// sniff package
+		for _, ln := range strings.Split(sbody, "\n") {
+			ln = strings.TrimSpace(ln)
+			if strings.HasPrefix(ln, "//") {
+				continue
+			}
+			if strings.HasPrefix(ln, "package ") {
+				origPkg = strings.TrimSpace(strings.TrimPrefix(ln, "package "))
+				break
+			}
+		}
 		if filepath.Clean(src) == filepath.Clean(abs) {
 			// instrument this file
 			var line0, line1 int
 			if lines != "" {
 				p := strings.Split(lines, ":")
-				line0, _ = strconv.Atoi(p[0])
-				line1, _ = strconv.Atoi(p[1])
+				if len(p) == 2 {
+					line0, _ = strconv.Atoi(p[0])
+					line1, _ = strconv.Atoi(p[1])
+				}
 			}
-			b, err = instrumentSource(b, target{name: name, line0: line0, line1: line1, file: abs})
-			if err != nil {
-				// fall back to running original
-				fmt.Fprintf(os.Stderr, "wakeline: instrumentation failed: %s, running without tracing\n", err)
-				failure("instrument", err.Error())
+			b2, err2 := instrumentSource(b, target{name: name, line0: line0, line1: line1, file: abs})
+			if err2 != nil {
+				fmt.Fprintf(os.Stderr, "wakeline: instrumentation failed: %s, running without tracing\n", err2)
+				failure("instrument", err2.Error())
+			} else {
+				b = b2
 			}
 		}
 		if err := ioutil.WriteFile(dst, b, 0644); err != nil {
 			fail("cannot write temp file", 2)
+		}
+	}
+	if !hasMain {
+		if origPkg == "" || origPkg == "main" {
+			dummy := []byte("package main\n\nfunc main() {}\n")
+			ioutil.WriteFile(filepath.Join(tmp, "wakeline_dummy_main.go"), dummy, 0644)
+		} else {
+			// library package - convert to main package
+			entries2, _ := ioutil.ReadDir(tmp)
+			for _, e := range entries2 {
+				if e.IsDir() {
+					continue
+				}
+				if !strings.HasSuffix(e.Name(), ".go") {
+					continue
+				}
+				p := filepath.Join(tmp, e.Name())
+				b, err := ioutil.ReadFile(p)
+				if err != nil {
+					continue
+				}
+				bs := string(b)
+				// replace package declaration
+				lines2 := strings.Split(bs, "\n")
+				for i := range lines2 {
+					lt := strings.TrimSpace(lines2[i])
+					if strings.HasPrefix(lt, "//") {
+						continue
+					}
+					if strings.HasPrefix(lt, "package ") {
+						lines2[i] = "package main"
+						break
+					}
+				}
+				ioutil.WriteFile(p, []byte(strings.Join(lines2, "\n")), 0644)
+			}
+			dummy := []byte("package main\n\nfunc main() {}\n")
+			ioutil.WriteFile(filepath.Join(tmp, "wakeline_dummy_main2.go"), dummy, 0644)
 		}
 	}
 
@@ -154,11 +212,28 @@ func main() {
 		}
 	}
 
+	// write initial headers
+	if out != "" {
+		_ = os.MkdirAll(filepath.Dir(out), 0755)
+		if f, err := os.Create(out); err == nil {
+			f.WriteString("{\"k\":\"ver\",\"v\":1}\n")
+			f.WriteString("{\"k\":\"meta\",\"src\":" + strconvQuote(abs) + "}\n")
+			f.Close()
+		}
+	}
+	// ensure module
+	if _, err := os.Stat(filepath.Join(tmp, "go.mod")); os.IsNotExist(err) {
+		initm := exec.Command("go", "mod", "init", "wakelinetmp")
+		initm.Dir = tmp
+		initm.Env = append(os.Environ(), "GO111MODULE=on")
+		initm.Run()
+	}
 	// build
 	build := exec.Command("go", "build", "-o", filepath.Join(tmp, "prog"), ".")
 	build.Dir = tmp
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
+	build.Env = append(os.Environ(), "GO111MODULE=on")
 	if err := build.Run(); err != nil {
 		msg := err.Error()
 		fail(fmt.Sprintf("go build failed: %s", msg), 2)
@@ -191,6 +266,8 @@ func fail(msg string, code int) {
 	tryWriteFailure(os.Getenv("wakeline_out"), msg)
 	os.Exit(code)
 }
+
+func strconvQuote(s string) string { b,_ := json.Marshal(s); return string(b) }
 
 func tryWriteFailure(out, msg string) {
 	if out == "" {

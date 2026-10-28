@@ -4,3 +4,6 @@ out/
 *.code-workspace
 .env
 .DS_Store
+out-test/
+__pycache__/
+*.pyc

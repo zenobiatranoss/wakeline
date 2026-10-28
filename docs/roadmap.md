@@ -21,10 +21,7 @@ the release candidate this chain builds.
 
 - typescript source support in the javascript recorder via esbuild transpile with line mapping.
 - `sys.monitoring` fast path on python 3.12+, behind the existing recorder interface.
-- value masking by name pattern at serialization time.
 - better loop alignment in compare for different iteration counts.
-- benchmark suite published in `docs/performance.md`.
-- recording search across calls by argument value.
 
 ## v1.0
 

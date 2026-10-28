@@ -1,0 +1,206 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+header,
+footer {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--vscode-sideBar-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+footer {
+  border-top: 1px solid var(--vscode-panel-border);
+  border-bottom: none;
+}
+
+input,
+select,
+button {
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 2px 6px;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input:focus,
+select:focus,
+button:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 0;
+}
+
+#search {
+  width: 150px;
+}
+
+#calls {
+  flex: 1;
+  min-width: 0;
+}
+
+#status {
+  min-height: 1.4em;
+  padding: 4px 8px;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+#list {
+  flex: 1;
+  overflow: auto;
+  outline: none;
+}
+
+#scrub {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--vscode-progressBar-background);
+}
+
+#counter {
+  min-width: 70px;
+  text-align: right;
+  color: var(--vscode-descriptionForeground);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.row.current {
+  background: var(--vscode-editor-lineHighlightBackground);
+}
+
+.row .step {
+  width: 64px;
+  color: var(--vscode-descriptionForeground);
+  text-align: right;
+  padding-right: 10px;
+  flex: none;
+}
+
+.row .line {
+  width: 46px;
+  color: var(--vscode-editorLineNumber-foreground);
+  text-align: right;
+  padding-right: 10px;
+  flex: none;
+}
+
+.row .vars {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row .bad {
+  color: var(--vscode-errorForeground);
+  margin-left: 10px;
+}
+
+.row.group {
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editorWidget-background);
+}
+
+.row.group .hint {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 0.85em;
+}
+
+#compare-box {
+  max-height: 45%;
+  overflow: auto;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background);
+}
+
+.compare-title {
+  padding: 6px 8px;
+  color: var(--vscode-editorWarning-foreground);
+}
+
+.compare-head,
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.compare-head {
+  padding: 4px 8px;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.compare-row.hit {
+  background: var(--vscode-editor-findMatchHighlightBackground);
+}
+
+.compare-cell {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.compare-cell .step {
+  color: var(--vscode-descriptionForeground);
+  min-width: 42px;
+  text-align: right;
+}
+
+.compare-cell .line {
+  color: var(--vscode-editorLineNumber-foreground);
+  min-width: 32px;
+  text-align: right;
+}
+
+.compare-cell .vars {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-cell.empty {
+  background: transparent;
+}

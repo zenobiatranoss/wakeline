@@ -69,23 +69,23 @@ installed into the user's environment.
 
 ## extension modules
 
-planned files, one per real responsibility. stage 1 has only `extension.ts`.
-
-- `src/extension.ts` - activation, deactivation, wiring. no logic beyond registration.
-- `src/commands.ts` - command handlers and the small user prompts around them.
-- `src/function_find.ts` - locate the enclosing function and produce its identity.
+- `src/extension.ts` - activation, commands, run wiring, status bar and output channel.
+- `src/function_find.ts` - document symbols first, text scan second.
+- `src/text_find.ts` - pure python and javascript function detection, used when symbols are missing.
 - `src/settings.ts` - typed reads of `wakeline.*` configuration with defaults.
-- `src/run.ts` - run controller: preflight, interpreter choice, spawn, cancel, timeout, cleanup.
-- `src/storage.ts` - recordings folder, file names, retention, latest-per-function lookup.
+- `src/run.ts` - spawn, cancel, timeout, file size backstop, process tree cleanup.
+- `src/storage.ts` - recordings folder, file names, retention, latest lookup.
 - `src/recording_reader.ts` - incremental json lines reader, version check, call index.
 - `src/format.ts` - types and validation for recording lines and encoded values.
 - `src/timeline_panel.ts` - webview lifecycle and message passing.
 - `src/decorations.ts` - ghost values, dimming, current line, compare decorations.
 - `src/compare.ts` - divergence between two calls.
-- `src/status.ts` - status bar state.
-- `webview/timeline.html`, `webview/timeline.css`, `webview/timeline.ts` - the panel, no framework.
+- `webview/timeline.css`, `webview/timeline.ts` - the panel, no framework.
 - `recorders/python/wakeline_recorder.py` plus a few modules - trace and serialize.
 - `recorders/javascript/wakeline_recorder.js` plus a few modules - instrument and serialize.
+
+the javascript recorder source is split for readability and bundled into `core.cjs` with esbuild so the
+recorder process does not need a `node_modules` directory of its own.
 
 ## function identity
 
@@ -104,7 +104,9 @@ javascript:
 - the recorder parses the file and picks the function node whose start line matches the identity, then instruments
   only that node.
 
-the identity goes to the recorder as argv, not environment variables, so it shows up in logs and reproductions:
+the python recorder takes the identity as argv. the javascript recorder takes it as argv too, then passes it
+to the instrumented child through lowercase environment variables so the preload hook can read it without
+another config file. the command line still shows up in logs and reproductions:
 
 ```
 python wakeline_recorder.py --file /abs/target.py --name store.item.total --lines 12:40 --out /abs/rec.jsonl \
@@ -116,7 +118,8 @@ python wakeline_recorder.py --file /abs/target.py --name store.item.total --line
 start:
 - refuse if the workspace is untrusted, no editor is open, no function is found, or a recording is already running.
 - create the output path under global storage before spawning, so a crash leaves a findable partial file.
-- spawn with an argv array and no shell. cwd is the workspace folder root, unless the setting overrides it.
+- spawn with an argv array and no shell. cwd is the workspace folder root when the file belongs to one, otherwise
+  the file's directory.
 
 observe:
 - pipe stdout and stderr to a shared output channel, prefixing nothing. users want their program's output as is.
@@ -126,8 +129,8 @@ observe:
 cancel:
 - posix: send sigterm, wait a short grace period, then sigkill the process group.
 - windows: `taskkill /pid <pid> /t /f`.
-- after either, close the pipes and keep whatever the recorder wrote, flagged by a final marker it writes on
-  sigterm. if it could not write one, the reader treats a missing call_end as an interrupted call.
+- after either, close the pipes and keep whatever the recorder wrote. a process killed mid-write may lose its
+  last line; the reader drops an incomplete tail and treats a missing call_end as an interrupted call.
 
 cleanup:
 - all live children live in one set owned by the run controller.
@@ -146,12 +149,12 @@ cleanup:
 - a recording is never written into the workspace by default, so it does not pollute the user's repo.
 
 reading incrementally:
-- a first pass streams the file with `fs.createReadStream` and a line splitter, validating the header and
-  recording byte offsets for each `call_start` and `call_end`.
-- the reader keeps only the index (call id, function, start/end offsets, outcome, duration) plus the current
-  call's events. a 500k event file must not become a 500k object array in the extension host.
-- the webview asks for a call by id; the extension reads that byte range from the file, parses those lines, and
-  posts only what the view needs. step detail is read again if the user scrubs back after switching calls.
+- a first pass reads fixed-size chunks and splits lines by hand, validating the header and recording byte offsets
+  for each `call_start` and `call_end`.
+- the reader keeps only the index (call id, function, start/end offsets, outcome, duration). the current call's
+  events are read on demand, capped at 50,000 in memory, so a huge file does not become one giant array.
+- the webview asks for a call by id; the extension reads that byte range and posts only what the view needs.
+  step detail is read again if the user switches calls.
 
 ## ui
 
@@ -162,40 +165,55 @@ editor decorations:
   value is available on hover as a formatted string.
 - dimming uses opacity on lines that have no line event in the selected call. the current line is never dimmed.
 - the current step's line gets a subtle background highlight.
-- in compare mode the ghost text shows `a: x  b: y` only where the two calls differ.
+- in compare mode the ghost text shows `a = x   b = y` on the divergence line, and only while the selected step is
+  that line.
 
 timeline webview (plain html, css, typescript):
 - top bar: call picker with search and filter, recording status, cap warnings.
 - middle: the source steps for the selected call as a virtualized list, each row showing line number and values.
-- bottom: scrubber, play/pause, step back/forward, loop collapse toggle, and a step counter.
+- bottom: scrubber, play/pause, step back/forward, and a step counter.
 - loop collapse groups consecutive repeated line patterns into one row with an iteration count, so a 5000 loop
-  is one row until expanded.
+  is one row until expanded. there is no on/off switch; clicking a group expands it.
 - long lists are virtualized: only visible rows are in the dom.
 - plain text labels, no icons that need a font, no emoji.
 
 compare view:
-- pick call a and call b from the call picker, or use "compare with previous call".
+- pick a call from the call picker, or use "compare with previous call".
+- "compare with call id" accepts an id from the picker and compares it with the selected call.
 - the panel splits into two columns aligned at the first divergence, with the divergence row marked in both.
 - a one-line summary is generated from the data, e.g. `same until line 42, then total is 7 on the left and 9 on
   the right`. when one call threw, the summary says that plainly.
 
+compare algorithm:
+- both calls are read as their ordered line events. the two sequences are zipped by step index; they are not
+  aligned by loop iteration.
+- at each index, a different source line is the first divergence. when the lines match, every variable name in
+  either snapshot is compared by its encoded value. `wakeline.compare_ignore` globs drop names before comparing.
+- if one sequence runs out first, the extra steps are the divergence. if the lengths match but the outcomes
+  differ, that is reported at the last step.
+- the panel renders only a 40-event window around the divergence, not both full calls.
+
 empty and error states:
 - no recording open: a short line saying no recording is loaded.
-- recording with no calls: "the function was never called" plus the run's exit code.
+- recording with no calls: "the function was never called", or the recorder failure message when one was written.
 - newer format: a clear refusal naming the recording version and the extension's supported version.
-- stale recording (file changed since the run): a warning banner, decorations still render by line number.
-- cap hit: a banner naming the cap and the step where recording stopped.
+- stale recording (file changed since the run): a note in the panel status line; decorations still render by line
+  number.
+- cap hit: the panel status line names the cap and the step where recording stopped.
 - truncated value: the truncation marker inline and the reason on hover.
 
 ## caps and performance
 
 three caps, all configurable, all enforced inside the recorder:
 - max calls: stop tracing the target function after this many calls. the program continues.
-- max events per call: stop recording events for that call, write `cap_hit`, and let the call finish untraced.
-- max bytes: stop recording entirely when the file passes this size, write `cap_hit`, and let the program finish.
+- max events per call: stop recording events for that call, write a `cap_hit` carrying that call id, and let the
+  call finish untraced.
+- max bytes: stop recording entirely when the file passes this size, write a `cap_hit`, and let the program finish.
+  the file can overshoot by at most the line being written, so the last call may have no `call_end`.
 
-when a cap hits, the recorder never throws into the user's code and never stops the program. it removes its
-trace function and writes the marker.
+when a global cap hits, the recorder never throws into the user's code and never stops the program. it stops
+tracing or writing new events and leaves the marker. a per-call event cap only silences that call; other calls
+are still recorded.
 
 serialization is bounded separately: max depth, max items per collection, max string length, max bytes per value.
 cycles become reference markers. objects whose `repr`/getters throw become opaque values. nothing imports numpy
@@ -211,8 +229,8 @@ main decoration path with small chunks, and the extension host never reads a who
 - the extension makes no network calls. recordings stay on disk in global storage.
 - child processes are spawned with argv arrays, never a shell string.
 - interpreter paths from settings are used as-is; if they do not exist the run fails before spawning.
-- recordings contain user program data. they are not scanned, uploaded, or shared. a later stage adds variable
-  masking by name pattern, applied at serialization time.
+- recordings contain user program data. they are not scanned, uploaded, or shared. variable masking by name pattern
+  is applied at serialization time in both recorders, before a value reaches the file.
 
 ## platform notes
 
@@ -220,8 +238,8 @@ main decoration path with small chunks, and the extension host never reads a who
 - line endings do not matter to the format (json lines are read by content), but the javascript recorder maps
   inserted hooks without adding newlines so line numbers stay exact on both lf and crlf files.
 - python discovery order: the python extension's configured interpreter if it is available, then
-  `wakeline.pythonPath`, then `python3`/`python` on path.
-- node discovery order: `wakeline.nodePath`, then `node` on path.
+  `wakeline.python_path`, then `python3`/`python` on path.
+- node discovery order: `wakeline.node_path`, then `node` on path.
 - process tree kill differs: process groups on posix, `taskkill /t` on windows.
 
 ## known limits
@@ -235,6 +253,7 @@ main decoration path with small chunks, and the extension host never reads a who
 - one target function per recording. recording several at once is out of scope.
 - async javascript functions record the synchronous steps of each invocation. steps on opposite sides of an
   `await` belong to the same call id, but the program may interleave other calls in between.
-- python generators record steps as they run; a generator that is created but never iterated produces no call.
+- python generators and coroutines are one call from first resume to final completion; a generator that is created
+  but never iterated produces no call.
 - values are bounded, so very large structures are shown truncated by design, not in full.
 - deeply recursive calls can exhaust the interpreter's own stack; wakeline does not change recursion limits.

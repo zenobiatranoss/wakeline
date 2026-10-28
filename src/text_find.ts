@@ -124,15 +124,29 @@ function pick_smallest(candidates: named_candidate[], at: number): found_functio
 // `type.name`. a plain function keeps just its name.
 function go_function(text: string, at: number): found_function | null {
   const out: named_candidate[] = [];
-  const re = /^[ \t]*func\s+(?:\(\s*(?:[A-Za-z_]\w*\s+)?\*?([A-Za-z_]\w*)\s*\)\s*)?([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(/gm;
+  const re = /(?:^|\n)[ \t]*func\s+(?:\(\s*(?:[A-Za-z_]\w*\s+)?\*?([A-Za-z_]\w*)\s*\)\s*)?([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(/gm;
   for (const m of text.matchAll(re)) {
     const receiver = m[1];
-    const name = receiver ? `${receiver}.${m[2]}` : m[2];
+    const fname = m[2];
+    const name = receiver ? `${receiver}.${fname}` : fname;
     const open = body_brace(text, m.index);
     if (open < 0) continue;
     const close = match_brace(text, open);
     if (close < 0) continue;
     out.push({ name, start: line_at(text, m.index), end: line_at(text, close) });
+  }
+  if (out.length === 0) {
+    const re2 = /func\s+(?:\(\s*(?:[A-Za-z_]\w*\s+)?\*?([A-Za-z_]\w*)\s*\)\s*)?([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(/gm;
+    for (const m of text.matchAll(re2)) {
+      const receiver = m[1];
+      const fname = m[2];
+      const name = receiver ? `${receiver}.${fname}` : fname;
+      const open = body_brace(text, m.index);
+      if (open < 0) continue;
+      const close = match_brace(text, open);
+      if (close < 0) continue;
+      out.push({ name, start: line_at(text, m.index), end: line_at(text, close) });
+    }
   }
   return pick_smallest(out, at);
 }
@@ -175,17 +189,15 @@ const cs_skip = new Set([
 
 function csharp_function(text: string, at: number): found_function | null {
   const out: named_candidate[] = [];
-  const re = /^([ \t]*)([^;{}\n]*?\([^;{}\n]*\))\s*(?:where[^{;]*)?(?:\{|=>)/gm;
+  const re = /(?:^|\n)([ \t]*)([^{;\n]*?\([^;\n]*\))\s*(?:where[^{;]*)?(?:\{|=>)/gm;
   for (const m of text.matchAll(re)) {
     const head = m[2];
     const paren = head.indexOf("(");
     if (paren < 0) continue;
-    // drop a generic parameter list at the end, then take the last word before
-    // the paren. that word is the method name even with a long return type.
     const before = head.slice(0, paren).replace(/<[^>]*>\s*$/, "").trim();
-    const name = before.split(/[\s*&]+/).pop() ?? "";
+    const parts = before.split(/[\s*&:]+/);
+    const name = parts[parts.length - 1] ?? "";
     if (!name || cs_skip.has(name) || !/^[A-Za-z_]\w*$/.test(name)) continue;
-
     const arrow = m[0].trimEnd().endsWith("=>");
     let close = -1;
     if (arrow) {
@@ -197,6 +209,29 @@ function csharp_function(text: string, at: number): found_function | null {
     }
     if (close < 0) continue;
     out.push({ name, start: line_at(text, m.index), end: line_at(text, close) });
+  }
+  if (out.length === 0) {
+    const re2 = /([^{;\n]*?\([^;\n]*\))\s*(?:where[^{;]*)?(?:\{|=>)/gm;
+    for (const m of text.matchAll(re2)) {
+      const head = m[1];
+      const paren = head.indexOf("(");
+      if (paren < 0) continue;
+      const before = head.slice(0, paren).replace(/<[^>]*>\s*$/, "").trim();
+      const parts = before.split(/[\s*&:]+/);
+      const name = parts[parts.length - 1] ?? "";
+      if (!name || cs_skip.has(name) || !/^[A-Za-z_]\w*$/.test(name)) continue;
+      const arrow = m[0].trimEnd().endsWith("=>");
+      let close = -1;
+      if (arrow) {
+        close = semicolon_end(text, m.index + m[0].length);
+      } else {
+        const brace = m[0].lastIndexOf("{");
+        if (brace < 0) continue;
+        close = match_brace(text, m.index + brace);
+      }
+      if (close < 0) continue;
+      out.push({ name, start: line_at(text, m.index), end: line_at(text, close) });
+    }
   }
   return pick_smallest(out, at);
 }
@@ -243,6 +278,18 @@ function cpp_function(text: string, at: number): found_function | null {
     const close = match_brace(text, i);
     if (close < 0) continue;
     out.push({ name: name.text, start: line_at(text, name.at), end: line_at(text, close) });
+  }
+  if (out.length === 0) {
+    // fallback simple regex
+    const re = /([~A-Za-z_]\w*(?:::[~A-Za-z_]\w*)*)\s*\([^;{}]*\)\s*(?:const\s*)?\{/gm;
+    for (const m of text.matchAll(re)) {
+      const name = m[1];
+      if (cpp_skip.has(name)) continue;
+      const brace = m.index + m[0].lastIndexOf('{');
+      const close = match_brace(text, brace);
+      if (close < 0) continue;
+      out.push({ name, start: line_at(text, m.index), end: line_at(text, close) });
+    }
   }
   return pick_smallest(out, at);
 }

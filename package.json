@@ -28,13 +28,21 @@
     "c++"
   ],
   "activationEvents": [
-    "onCommand:wakeline.record_this_function",
-    "onCommand:wakeline.stop_recording",
-    "onCommand:wakeline.open_last_recording",
-    "onCommand:wakeline.clear_recordings"
+    "onStartupFinished",
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:go",
+    "onLanguage:csharp",
+    "onLanguage:cpp"
   ],
   "main": "out/extension.js",
   "contributes": {
+    "codeLens": {
+      "scopes": [
+        "editor"
+      ]
+    },
     "commands": [
       {
         "command": "wakeline.record_this_function",

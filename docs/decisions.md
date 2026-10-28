@@ -96,7 +96,8 @@ justified dependencies, all build-time or dev-time:
 - `typescript` - type checking and types.
 - `eslint`, `@typescript-eslint/*` - lint.
 - `@types/vscode`, `@types/node` - types only.
-- `acorn` - later, bundled into the javascript recorder so it runs with plain node.
+- `acorn` - bundled into the javascript recorder so it runs with plain node.
+- `@vscode/vsce` - packaging, not loaded at runtime.
 
 rejected: a test framework dependency (node's built-in `node:test` is enough), a webview framework (brief says
 plain html/css/ts), and any telemetry or analytics package (no network calls).
@@ -120,6 +121,61 @@ rejected: a "record anyway" prompt.
 ## caps are enforced in the recorder, timeout in the extension
 
 why: the recorder sees every event and can stop tracing cleanly, keeping the user's program running. the
-extension cannot count events without reading the file, so its backstop is wall time and file size.
+extension cannot count events without reading the file, so its backstop is wall time and file size. the size
+check polls once a second and only kills a run that has overshot the configured byte cap by another megabyte;
+it is a safety net for a recorder that stops responding, not the normal cap path.
 
-rejected: letting the extension watch file size to stop the recorder (racy and late).
+rejected: making the extension the primary size enforcement point. polling is racy and late, so the recorder
+still counts bytes and stops itself first.
+
+## compare zips steps, it does not align loop iterations
+
+picked: walk both event lists by step index, compare the line and then each variable snapshot, and stop at the
+first difference. `compare_ignore` removes noisy names before the value check.
+
+why: it is predictable and cheap, and it works the same for recursion and ordinary sequential code. it needs no
+alignment heuristic that could hide a real difference. the cost is that two calls of a loop with different
+iteration counts diverge at the first extra step instead of lining up matching iterations. that still tells the
+user where the calls parted, which is the question compare is answering in 0.1.0.
+
+rejected: sequence alignment such as lcs or diff over line numbers. it handles loops with different counts
+better, but it invents a mapping between steps, is harder to explain in a summary, and can point at a step the
+user never reached. learn loop alignment later if the simple version is not enough.
+
+## a generator or coroutine is one call, not one call per resume
+
+picked: when python re-fires a `call` event for a frame that already has our local trace function attached, we
+reuse that trace function and continue the existing call id and step counter.
+
+why: python reports every resume of a suspended frame as a new `call`, but the code object and locals are the same
+execution. starting a new record per resume splits one generator into N calls with bogus arguments and depths,
+which is useless in the timeline. the local trace function stays attached to `frame.f_trace` across suspension, so
+tagging it with the owning tracer is enough to recover the call without holding a frame reference (frames cannot be
+weakly referenced in python 3.8+).
+
+rejected: holding frame objects in a map keyed by `id(frame)` (address reuse is unsound, and holding frames keeps
+locals alive), and counting `call` events with a heuristic on `f_lasti` (fragile across python versions).
+
+## caps stop tracing, not the program, and leave honest evidence
+
+picked: `max_events` is per call and writes a `cap_hit` carrying that call id; `max_calls` and `max_bytes` are
+global and write one marker without an id. `max_bytes` returns `None` from the trace hook immediately and uninstalls
+tracing. in-flight calls may therefore have no `call_end`.
+
+why: a per-call event budget keeps every recorded call equally detailed, and the id makes the marker attributable.
+a global byte budget must be able to stop mid-line batch. we prefer an honestly truncated file that a reader can
+flag as interrupted over buffering unsent events in memory just to close every call.
+
+rejected: emitting a synthetic `call_end` for calls that were cut off (invents an outcome the program never
+produced), and letting the byte cap finish the current call (the overshoot is unbounded for a long call).
+
+## the source header is a `meta` line, not a sidecar
+
+picked: one `{"k":"meta","src":...,"sm":...}` line right after the version line.
+
+why: the editor needs the source path and mtime to warn when the open file no longer matches a recording. putting
+it in the stream keeps the one-file-per-recording rule and lets the reader detect staleness in the same pass that
+builds the index.
+
+rejected: a `.meta.json` sidecar (can drift from the recording), and putting the path on every `call_start`
+(repeats the same value for every call).

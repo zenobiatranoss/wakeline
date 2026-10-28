@@ -72,40 +72,68 @@ export function find_executable(setting: string, names: string[]): string | null
 // assumes it is allowed to start and does not clean up a previous child.
 export function start_recording(opts: run_options, on_output: (text: string) => void): running {
   const fallback = opts.language === "python" ? ".py" : ".js";
-  const recorder =
+  let recorder =
     opts.recorder ??
     path.join(opts.extension_root, "recorders", opts.language, `wakeline_recorder${fallback}`);
-  const cmd = opts.command;
+  let cmd = opts.command;
   if (!cmd) {
     throw new Error(opts.language === "python" ? "no python interpreter found" : "no node found");
   }
 
+  // use prebuilt go binary if available
+  if (opts.language === "go") {
+    const gobin = path.join(opts.extension_root, "recorders", "go", "go");
+    if (fs.existsSync(gobin)) {
+      cmd = gobin;
+      recorder = gobin; // not used
+    }
+  }
+
   // flags first, then a literal -- so anything the user put in run_args is
   // passed to their program and can never be mistaken for a recorder flag.
-  // prefix is empty except for go, where `go run` sits between the command and
-  // the recorder source.
-  const args = [
-    ...(opts.prefix ?? []),
-    recorder,
-    "--file",
-    opts.file,
-    "--name",
-    opts.name,
-    "--lines",
-    `${opts.line0}:${opts.line1}`,
-    "--out",
-    opts.out,
-    "--max-calls",
-    String(opts.caps.max_calls),
-    "--max-events",
-    String(opts.caps.max_events),
-    "--max-bytes",
-    String(opts.caps.max_bytes),
-    "--mask",
-    opts.masked.join(","),
-    "--",
-    ...split_args(opts.extra_args),
-  ];
+  const args = opts.language === "go" && cmd.includes("recorders/go/go") && !cmd.endsWith(".go")
+    ? [
+        "--file",
+        opts.file,
+        "--name",
+        opts.name,
+        "--lines",
+        `${opts.line0}:${opts.line1}`,
+        "--out",
+        opts.out,
+        "--max-calls",
+        String(opts.caps.max_calls),
+        "--max-events",
+        String(opts.caps.max_events),
+        "--max-bytes",
+        String(opts.caps.max_bytes),
+        "--mask",
+        opts.masked.join(","),
+        "--",
+        ...split_args(opts.extra_args),
+      ]
+    : [
+        ...(opts.prefix ?? []),
+        recorder,
+        "--file",
+        opts.file,
+        "--name",
+        opts.name,
+        "--lines",
+        `${opts.line0}:${opts.line1}`,
+        "--out",
+        opts.out,
+        "--max-calls",
+        String(opts.caps.max_calls),
+        "--max-events",
+        String(opts.caps.max_events),
+        "--max-bytes",
+        String(opts.caps.max_bytes),
+        "--mask",
+        opts.masked.join(","),
+        "--",
+        ...split_args(opts.extra_args),
+      ];
   // no shell anywhere. the interpreter and the script are separate argv
   // entries, which keeps spaces and quotes in paths from turning into commands.
   // detached on posix gives the recorder its own process group, so the whole
