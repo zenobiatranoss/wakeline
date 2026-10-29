@@ -1,8 +1,6 @@
 import { short_value, value_text, type call_index, type encoded_value, type reader_event } from "./format";
 
-// compares two calls step by step and returns the first place they disagree.
-// the interesting answers are "different line", "same line, different value"
-// and "same steps, different outcome". everything else is "no divergence".
+// compare calls step by step
 
 export type divergence = {
   found: boolean;

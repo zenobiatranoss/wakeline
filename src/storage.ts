@@ -1,9 +1,7 @@
 import * as fsp from "fs/promises";
 import * as path from "path";
 
-// recordings live under the extension's global storage, never in the workspace.
-// file names carry the language, the function name and a timestamp, which is
-// enough to group them for retention without a database.
+// recordings in global storage
 export function recordings_dir(root: string) {
   return path.join(root, "recordings");
 }
