@@ -20,7 +20,7 @@ never paused.
 | --- | --- |
 | python | supported, python 3.8 or newer |
 | javascript (`.js`, `.mjs`, `.cjs`) | supported, node 18 or newer |
-| typescript, c#, c++ | experimental, off by default (see below) |
+| typescript, c#, c++, go | experimental, off by default (see below) |
 
 ## install
 
@@ -57,10 +57,11 @@ to pass arguments to your program, set `wakeline.run_args`.
 | `wakeline.retention` | 10 | recordings kept per function |
 | `wakeline.python_path` | empty | python interpreter, empty means look on path |
 | `wakeline.node_path` | empty | node executable, empty means look on path |
+| `wakeline.go_path` | empty | go executable, empty means look on path |
 | `wakeline.run_args` | empty | arguments passed to your program |
 | `wakeline.variable_masking` | empty | names or globs (like `*token*`) whose values are never written to a recording |
 | `wakeline.compare_ignore` | empty | names or globs ignored when comparing calls |
-| `wakeline.experimental_languages` | off | turns on typescript, c# and c++ |
+| `wakeline.experimental_languages` | off | turns on typescript, c#, c++ and go |
 
 when a cap is hit, recording of that function stops and the timeline says so. your program keeps running.
 
@@ -80,7 +81,7 @@ program.
 - compare lines steps up by position. loops with different iteration counts diverge at the first extra step
 - the timeline loads one whole recording at a time. very large recordings take a while to open
 - experimental languages: c# and c++ record call boundaries only (no line values), typescript needs the
-  `typescript` package to be available and may point at the wrong file. go is not included
+  `typescript` package to be available and may point at the wrong file. go is experimental.
 
 ## build from source
 
