@@ -1,6 +1,4 @@
-// types and validation for the jsonl recording format. the recorders write
-// these lines and the reader checks them, so this file is the contract between
-// the two sides. keep it boring and explicit.
+// jsonl format types/validation
 
 const supported_version = 1;
 
