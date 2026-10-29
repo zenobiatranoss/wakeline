@@ -71,7 +71,7 @@ const env = {
 // for it, commonjs gets a preload.
 const dir = __dirname;
 const node_args = module_type(full) === "module"
-  ? ["--experimental-loader", path.join(dir, "loader.mjs"), "--", full, ...rest]
+  ? ["--experimental-loader", "file://" + path.join(dir, "loader.mjs").replace(/\\/g, "/"), "--", full, ...rest]
   : ["--require", path.join(dir, "preload.cjs"), "--", full, ...rest];
 
 const child = spawn(process.execPath, node_args, { cwd: process.cwd(), env, stdio: "inherit" });
