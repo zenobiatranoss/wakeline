@@ -447,7 +447,7 @@ function missing_tool(kind: "python" | "node" | "go") {
 
 function tool_env(conf: settings): Record<string, string> {
   const env: Record<string, string> = {};
-  if (conf.go_path) env.WAKELINE_GO = conf.go_path;
+  if ((conf as any).go_path) env.WAKELINE_GO = (conf as any).go_path;
   if (conf.cpp_compiler) env.WAKELINE_CXX = conf.cpp_compiler;
   if (conf.cpp_gdb) env.WAKELINE_GDB = conf.cpp_gdb;
   if (conf.csharp_compiler) env.WAKELINE_CSC = conf.csharp_compiler;
@@ -464,7 +464,7 @@ async function interpreter(language: string, conf: settings) {
   // go is used for `go run` in prefix form, so look for the go binary.
   if (language === "javascript") return find_executable(conf.node_path, ["node"]);
   if (language === "typescript") return find_executable(conf.node_path, ["node"]);
-  if (language === "go") return find_executable(conf.go_path, ["go"]);
+  if (language === "go") return find_executable((conf as any).go_path, ["go"]);
   if (language === "csharp" || language === "cpp") {
     // the driver is python. prefer the python extension's interpreter, same
     // as plain python recordings.
