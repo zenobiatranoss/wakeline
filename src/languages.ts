@@ -15,7 +15,7 @@ export type language_spec = {
   extensions: string[];
   recorder: string;
   prefix: string[];
-  command: "python" | "node";
+  command: "python" | "node" | "go";
   experimental?: boolean;
 };
 
@@ -61,6 +61,15 @@ export const languages: language_spec[] = [
     recorder: "recorders/cpp/wakeline_recorder.py",
     prefix: [],
     command: "python",
+    experimental: true,
+  },
+  {
+    id: "go",
+    label: "go",
+    extensions: [".go"],
+    recorder: "recorders/go/go",
+    prefix: [],
+    command: "go",
     experimental: true,
   },
 ];

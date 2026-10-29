@@ -31,7 +31,8 @@
     "onLanguage:javascript",
     "onLanguage:typescript",
     "onLanguage:csharp",
-    "onLanguage:cpp"
+    "onLanguage:cpp",
+    "onLanguage:go"
   ],
   "main": "out/extension.js",
   "capabilities": {
@@ -92,7 +93,7 @@
       "editor/context": [
         {
           "command": "wakeline.record_this_function",
-          "when": "editorLangId == python || editorLangId == javascript || editorLangId == typescript || editorLangId == csharp || editorLangId == cpp",
+          "when": "editorLangId == python || editorLangId == javascript || editorLangId == typescript || editorLangId == csharp || editorLangId == cpp || editorLangId == go",
           "group": "navigation"
         }
       ],
@@ -193,6 +194,11 @@
           "type": "string",
           "default": "",
           "description": "node executable path or command name; empty means look on path"
+        },
+        "wakeline.go_path": {
+          "type": "string",
+          "default": "",
+          "description": "go executable path or command name; empty means look on path"
         },
         "wakeline.cpp_compiler": {
           "type": "string",

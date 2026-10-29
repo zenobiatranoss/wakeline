@@ -16,6 +16,7 @@ export type settings = {
   retention: number;
   python_path: string;
   node_path: string;
+  go_path: string;
   // the c++ and c# drivers take these from the environment instead of flags,
   // because the compiler path is a tool detail the recorder only needs once.
   cpp_compiler: string;
@@ -43,6 +44,7 @@ export function read_settings(): settings {
     retention: c.get<number>("retention", 10),
     python_path: c.get<string>("python_path", ""),
     node_path: c.get<string>("node_path", ""),
+    go_path: c.get<string>("go_path", ""),
     cpp_compiler: c.get<string>("cpp_compiler", ""),
     cpp_gdb: c.get<string>("cpp_gdb", ""),
     csharp_compiler: c.get<string>("csharp_compiler", ""),
