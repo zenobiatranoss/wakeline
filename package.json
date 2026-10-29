@@ -22,21 +22,24 @@
     "time travel",
     "python",
     "javascript",
-    "typescript",
-    "go",
-    "csharp",
-    "c++"
+    "trace",
+    "variables"
   ],
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:python",
     "onLanguage:javascript",
     "onLanguage:typescript",
-    "onLanguage:go",
     "onLanguage:csharp",
     "onLanguage:cpp"
   ],
   "main": "out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "wakeline runs your program to record it, so recording is turned off in an untrusted workspace"
+    }
+  },
   "contributes": {
     "codeLens": {
       "scopes": [
@@ -89,7 +92,7 @@
       "editor/context": [
         {
           "command": "wakeline.record_this_function",
-          "when": "editorLangId == python || editorLangId == javascript || editorLangId == typescript || editorLangId == go || editorLangId == csharp || editorLangId == cpp",
+          "when": "editorLangId == python || editorLangId == javascript || editorLangId == typescript || editorLangId == csharp || editorLangId == cpp",
           "group": "navigation"
         }
       ],
@@ -191,11 +194,6 @@
           "default": "",
           "description": "node executable path or command name; empty means look on path"
         },
-        "wakeline.go_path": {
-          "type": "string",
-          "default": "",
-          "description": "go executable path or command name; empty means look on path"
-        },
         "wakeline.cpp_compiler": {
           "type": "string",
           "default": "",
@@ -236,6 +234,11 @@
           },
           "default": [],
           "description": "variable names or glob patterns ignored when comparing calls"
+        },
+        "wakeline.experimental_languages": {
+          "type": "boolean",
+          "default": false,
+          "description": "turn on typescript, c# and c++ recording. these are experimental: c# and c++ record call boundaries only, typescript needs the typescript package available"
         }
       }
     }

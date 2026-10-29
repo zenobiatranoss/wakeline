@@ -480,4 +480,3 @@ async function interpreter(language: string, conf: settings) {
     find_executable(conf.python_path, ["python3", "python"])
   );
 }
-

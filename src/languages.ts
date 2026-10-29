@@ -3,8 +3,11 @@
 // language later means one entry and a recorder folder, not a scavenger hunt.
 //
 // "command" is the program that starts the recorder, not the language runtime.
-// go needs `go run`, everything else is a script passed to an interpreter.
-// c# and c++ use python only as the driver; the driver finds its own compiler.
+// everything is a script passed to an interpreter. c# and c++ use python only
+// as the driver; the driver finds its own compiler.
+//
+// experimental ones only record call boundaries or are not finished (see
+// docs/roadmap.md). they stay off until wakeline.experimental_languages is set.
 
 export type language_spec = {
   id: string;
@@ -12,7 +15,8 @@ export type language_spec = {
   extensions: string[];
   recorder: string;
   prefix: string[];
-  command: "python" | "node" | "go";
+  command: "python" | "node";
+  experimental?: boolean;
 };
 
 export const languages: language_spec[] = [
@@ -39,16 +43,7 @@ export const languages: language_spec[] = [
     recorder: "recorders/typescript/wakeline_recorder.js",
     prefix: [],
     command: "node",
-  },
-  {
-    id: "go",
-    label: "go",
-    extensions: [".go"],
-    recorder: "recorders/go/wakeline_recorder.go",
-    // go run wants the source file after the subcommand and before the flags
-    // that belong to the recorder.
-    prefix: ["run"],
-    command: "go",
+    experimental: true,
   },
   {
     id: "csharp",
@@ -57,6 +52,7 @@ export const languages: language_spec[] = [
     recorder: "recorders/csharp/wakeline_recorder.py",
     prefix: [],
     command: "python",
+    experimental: true,
   },
   {
     id: "cpp",
@@ -65,6 +61,7 @@ export const languages: language_spec[] = [
     recorder: "recorders/cpp/wakeline_recorder.py",
     prefix: [],
     command: "python",
+    experimental: true,
   },
 ];
 

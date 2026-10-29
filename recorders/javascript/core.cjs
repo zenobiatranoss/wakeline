@@ -5777,6 +5777,7 @@ var require_instrument = __commonJS({
         token,
         err_name,
         prefixes: /* @__PURE__ */ new Map(),
+        suffixes: /* @__PURE__ */ new Map(),
         replacements: [],
         target,
         name: qualified_name(target, parents) || opts.name || ""
@@ -5960,7 +5961,7 @@ var require_instrument = __commonJS({
     function instrument_block(block, scope, ctx) {
       for (const stmt of block.body) instrument_statement(stmt, scope, ctx);
     }
-    function instrument_statement(stmt, scope, ctx) {
+    function instrument_statement(stmt, scope, ctx, bare) {
       if (stmt.directive) return;
       switch (stmt.type) {
         case "EmptyStatement":
@@ -5969,7 +5970,7 @@ var require_instrument = __commonJS({
           instrument_block(stmt, make_scope(scope, stmt), ctx);
           return;
         case "ReturnStatement": {
-          const tick = make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
+          const tick = bare ? "" : make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
           const expr = stmt.argument ? ctx.source.slice(stmt.argument.start, stmt.argument.end) : "undefined";
           ctx.replacements.push({
             start: stmt.start,
@@ -5979,7 +5980,7 @@ var require_instrument = __commonJS({
           return;
         }
         case "ThrowStatement": {
-          const tick = make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
+          const tick = bare ? "" : make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
           const expr = ctx.source.slice(stmt.argument.start, stmt.argument.end);
           ctx.replacements.push({
             start: stmt.start,
@@ -5989,39 +5990,38 @@ var require_instrument = __commonJS({
           return;
         }
         case "FunctionDeclaration":
-          add_prefix(ctx, stmt.start, make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line));
-          return;
         case "ClassDeclaration":
-          add_prefix(ctx, stmt.start, make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line));
+          if (!bare) add_tick(stmt, scope, ctx);
           return;
         case "IfStatement":
-          add_tick(stmt, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
+          wrap_body(stmt.consequent, ctx);
           instrument_statement(stmt.consequent, scope, ctx);
-          if (stmt.alternate) instrument_statement(stmt.alternate, scope, ctx);
+          if (stmt.alternate) {
+            wrap_body(stmt.alternate, ctx);
+            instrument_statement(stmt.alternate, scope, ctx);
+          }
           return;
         case "ForStatement": {
-          add_tick(stmt, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
           const loop = loop_scope(scope, stmt.init ? declaration_names(stmt.init) : []);
-          add_body_tick(stmt.body, loop, ctx, stmt.loc.start.line);
-          instrument_statement(stmt.body, loop, ctx);
+          loop_body(stmt, loop, ctx);
           return;
         }
         case "ForInStatement":
         case "ForOfStatement": {
-          add_tick(stmt, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
           const loop = loop_scope(scope, declaration_names(stmt.left));
-          add_body_tick(stmt.body, loop, ctx, stmt.loc.start.line);
-          instrument_statement(stmt.body, loop, ctx);
+          loop_body(stmt, loop, ctx);
           return;
         }
         case "WhileStatement":
         case "DoWhileStatement":
-          add_tick(stmt, scope, ctx);
-          add_body_tick(stmt.body, scope, ctx, stmt.loc.start.line);
-          instrument_statement(stmt.body, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
+          loop_body(stmt, scope, ctx);
           return;
         case "SwitchStatement": {
-          add_tick(stmt, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
           const flat = [];
           for (const item of stmt.cases) flat.push(...item.consequent);
           const switch_scope = make_scope(scope, { body: flat }, []);
@@ -6031,7 +6031,7 @@ var require_instrument = __commonJS({
           return;
         }
         case "TryStatement":
-          add_tick(stmt, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
           instrument_statement(stmt.block, scope, ctx);
           if (stmt.handler) {
             const names = stmt.handler.param ? pattern_names(stmt.handler.param) : [];
@@ -6041,19 +6041,33 @@ var require_instrument = __commonJS({
           if (stmt.finalizer) instrument_statement(stmt.finalizer, scope, ctx);
           return;
         case "LabeledStatement":
-          add_tick(stmt, scope, ctx);
-          instrument_statement(stmt.body, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
+          instrument_statement(stmt.body, scope, ctx, true);
           return;
         case "WithStatement":
-          add_tick(stmt, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
+          wrap_body(stmt.body, ctx);
           instrument_statement(stmt.body, scope, ctx);
           return;
         default:
-          add_tick(stmt, scope, ctx);
+          if (!bare) add_tick(stmt, scope, ctx);
       }
     }
     function add_tick(stmt, scope, ctx) {
       add_prefix(ctx, stmt.start, make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line));
+    }
+    function wrap_body(body, ctx) {
+      if (body.type === "BlockStatement") return;
+      add_prefix(ctx, body.start, "{");
+      ctx.suffixes.set(body.end, (ctx.suffixes.get(body.end) || "") + "}");
+    }
+    function loop_body(stmt, scope, ctx) {
+      if (stmt.body.type === "BlockStatement") {
+        add_body_tick(stmt.body, scope, ctx, stmt.loc.start.line);
+      } else {
+        wrap_body(stmt.body, ctx);
+      }
+      instrument_statement(stmt.body, scope, ctx);
     }
     function add_body_tick(body, scope, ctx, line) {
       const at = body.type === "BlockStatement" ? entry_offset(body) : body.start;
@@ -6143,6 +6157,7 @@ var require_instrument = __commonJS({
         edits.push({ start: replacement.start, end: replacement.end, text });
       }
       for (const [start, text] of ctx.prefixes) edits.push({ start, end: start, text });
+      for (const [start, text] of ctx.suffixes) edits.push({ start, end: start, text });
       edits.sort((a, b) => b.start - a.start || b.end - a.end);
       let out = source;
       for (const edit of edits) out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);

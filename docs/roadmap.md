@@ -32,6 +32,18 @@ the release candidate this chain builds.
 - deeper windows path and long-path handling.
 - recording compression for very large runs.
 
+## not in 0.1.0 yet
+
+these have recorders in the repo but are behind `wakeline.experimental_languages`, or left out of the package.
+
+- typescript: the recorder needs the `typescript` package at run time, and the recording points at the
+  transpiled temp file instead of the `.ts` source. v0.2 replaces it with a transpile step that keeps a line map.
+- c# and c++: the drivers rewrite the source by name match and record call boundaries only. no line events,
+  no return values.
+- go: the recorder records calls and arguments only (no line events, no return values) and ran only as a
+  prebuilt binary next to its sources. it is not in the package. it needs line ticks and an embedded runtime
+  plus a build step before it comes back.
+
 ## out of scope
 
 - languages beyond python and javascript in v0.1 and v0.2.

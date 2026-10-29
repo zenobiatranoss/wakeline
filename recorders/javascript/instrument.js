@@ -37,6 +37,7 @@ function instrument(source, opts) {
     token,
     err_name,
     prefixes: new Map(),
+    suffixes: new Map(),
     replacements: [],
     target,
     name: qualified_name(target, parents) || opts.name || "",
@@ -272,7 +273,7 @@ function instrument_block(block, scope, ctx) {
   for (const stmt of block.body) instrument_statement(stmt, scope, ctx);
 }
 
-function instrument_statement(stmt, scope, ctx) {
+function instrument_statement(stmt, scope, ctx, bare) {
   // the interesting statements get a tick before they run and their bodies are
   // walked separately. plain statements just get a tick and are left alone.
   if (stmt.directive) return;
@@ -286,7 +287,7 @@ function instrument_statement(stmt, scope, ctx) {
     case "ReturnStatement": {
       // capture the values before the expression runs, then pass the result
       // through ret() so the call_end line can include it.
-      const tick = make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
+      const tick = bare ? "" : make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
       const expr = stmt.argument ? ctx.source.slice(stmt.argument.start, stmt.argument.end) : "undefined";
       ctx.replacements.push({
         start: stmt.start,
@@ -298,7 +299,7 @@ function instrument_statement(stmt, scope, ctx) {
     case "ThrowStatement": {
       // thrown() records the exception and returns it unchanged, so the actual
       // throw still behaves exactly as written.
-      const tick = make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
+      const tick = bare ? "" : make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line);
       const expr = ctx.source.slice(stmt.argument.start, stmt.argument.end);
       ctx.replacements.push({
         start: stmt.start,
@@ -308,43 +309,42 @@ function instrument_statement(stmt, scope, ctx) {
       return;
     }
     case "FunctionDeclaration":
-      add_prefix(ctx, stmt.start, make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line));
-      return;
     case "ClassDeclaration":
-      add_prefix(ctx, stmt.start, make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line));
+      if (!bare) add_tick(stmt, scope, ctx);
       return;
     case "IfStatement":
-      add_tick(stmt, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
+      wrap_body(stmt.consequent, ctx);
       instrument_statement(stmt.consequent, scope, ctx);
-      if (stmt.alternate) instrument_statement(stmt.alternate, scope, ctx);
+      if (stmt.alternate) {
+        wrap_body(stmt.alternate, ctx);
+        instrument_statement(stmt.alternate, scope, ctx);
+      }
       return;
     case "ForStatement": {
       // the loop head gets a tick, and the body gets a second one so each
       // iteration shows up even when the body spans several lines.
-      add_tick(stmt, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
       const loop = loop_scope(scope, stmt.init ? declaration_names(stmt.init) : []);
-      add_body_tick(stmt.body, loop, ctx, stmt.loc.start.line);
-      instrument_statement(stmt.body, loop, ctx);
+      loop_body(stmt, loop, ctx);
       return;
     }
     case "ForInStatement":
     case "ForOfStatement": {
-      add_tick(stmt, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
       const loop = loop_scope(scope, declaration_names(stmt.left));
-      add_body_tick(stmt.body, loop, ctx, stmt.loc.start.line);
-      instrument_statement(stmt.body, loop, ctx);
+      loop_body(stmt, loop, ctx);
       return;
     }
     case "WhileStatement":
     case "DoWhileStatement":
-      add_tick(stmt, scope, ctx);
-      add_body_tick(stmt.body, scope, ctx, stmt.loc.start.line);
-      instrument_statement(stmt.body, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
+      loop_body(stmt, scope, ctx);
       return;
     case "SwitchStatement": {
       // case bodies share one scope, so collect them into a fake block and
       // walk that. let declarations in a switch are weird but legal.
-      add_tick(stmt, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
       const flat = [];
       for (const item of stmt.cases) flat.push(...item.consequent);
       const switch_scope = make_scope(scope, { body: flat }, []);
@@ -355,7 +355,7 @@ function instrument_statement(stmt, scope, ctx) {
     }
     case "TryStatement":
       // the catch parameter only exists inside the handler, hence its own scope.
-      add_tick(stmt, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
       instrument_statement(stmt.block, scope, ctx);
       if (stmt.handler) {
         const names = stmt.handler.param ? pattern_names(stmt.handler.param) : [];
@@ -365,20 +365,43 @@ function instrument_statement(stmt, scope, ctx) {
       if (stmt.finalizer) instrument_statement(stmt.finalizer, scope, ctx);
       return;
     case "LabeledStatement":
-      add_tick(stmt, scope, ctx);
-      instrument_statement(stmt.body, scope, ctx);
+      // the label has to stay glued to its statement or continue/break outer
+      // stops being legal, so the tick goes before the label and the body
+      // gets none of its own. no braces either, a labeled block is not a loop.
+      if (!bare) add_tick(stmt, scope, ctx);
+      instrument_statement(stmt.body, scope, ctx, true);
       return;
     case "WithStatement":
-      add_tick(stmt, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
+      wrap_body(stmt.body, ctx);
       instrument_statement(stmt.body, scope, ctx);
       return;
     default:
-      add_tick(stmt, scope, ctx);
+      if (!bare) add_tick(stmt, scope, ctx);
   }
 }
 
 function add_tick(stmt, scope, ctx) {
   add_prefix(ctx, stmt.start, make_tick(ctx, stmt.start, visible(scope, stmt.start), stmt.loc.start.line));
+}
+
+function wrap_body(body, ctx) {
+  // a body without braces becomes a body with braces, so the tick we put in
+  // front of it can't swallow it (or end an if before its else).
+  if (body.type === "BlockStatement") return;
+  add_prefix(ctx, body.start, "{");
+  ctx.suffixes.set(body.end, (ctx.suffixes.get(body.end) || "") + "}");
+}
+
+function loop_body(stmt, scope, ctx) {
+  // braced bodies get an extra tick at the top of every iteration. a lone
+  // statement already gets its own tick, so it only needs the braces.
+  if (stmt.body.type === "BlockStatement") {
+    add_body_tick(stmt.body, scope, ctx, stmt.loc.start.line);
+  } else {
+    wrap_body(stmt.body, ctx);
+  }
+  instrument_statement(stmt.body, scope, ctx);
 }
 
 function add_body_tick(body, scope, ctx, line) {
@@ -494,6 +517,9 @@ function apply_edits(source, ctx) {
     edits.push({ start: replacement.start, end: replacement.end, text });
   }
   for (const [start, text] of ctx.prefixes) edits.push({ start, end: start, text });
+  // pushed after the prefixes on purpose: at the same offset the later edit
+  // lands in front, so a closing brace comes before the next statement's tick.
+  for (const [start, text] of ctx.suffixes) edits.push({ start, end: start, text });
   edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let out = source;
   for (const edit of edits) out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);

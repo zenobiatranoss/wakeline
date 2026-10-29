@@ -193,3 +193,41 @@ test("masked names keep the key but hide the value", async (t) => {
   assert.equal(a.cls, "masked");
   assert.equal(index.calls[0].args.b, 3);
 });
+
+// the recorder must never change what the program prints, and statements
+// without braces are where a rewrite is easiest to get wrong.
+function same_output(t: { after: (fn: () => void) => void }, fixture: string, name: string, lines: string) {
+  const file = path.join(fixtures, fixture);
+  const plain = spawnSync(process.execPath, [file], { encoding: "utf8" });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wakeline_js_"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const out = path.join(dir, "rec.jsonl");
+  const rec = spawnSync(
+    process.execPath,
+    [recorder, "--file", file, "--name", name, "--lines", lines, "--out", out],
+    { encoding: "utf8" },
+  );
+  assert.equal(rec.stdout, plain.stdout, `${name} changed the program output`);
+  return out;
+}
+
+test("braceless if, else if, loops and labels keep the program's behavior", async (t) => {
+  for (const [name, lines] of [
+    ["classify", "1:5"],
+    ["chain", "7:17"],
+    ["nested", "19:22"],
+    ["labeled", "24:34"],
+  ]) {
+    const out = same_output(t, "braceless.js", name, lines);
+    const index = await index_file(out);
+    assert.equal(index.failure, null, `${name}: ${index.failure}`);
+    assert.ok(index.calls.length > 0, `${name} recorded no calls`);
+  }
+});
+
+test("a mix of statement shapes records without a failure", async (t) => {
+  const out = same_output(t, "shapes.js", "shapes", "1:21");
+  const index = await index_file(out);
+  assert.equal(index.failure, null, String(index.failure));
+  assert.equal(index.calls.length, 5);
+});

@@ -2,202 +2,93 @@
 
 time travel for a single function inside vs code.
 
-this project is still under active development.
+right-click a function, run your program, then scrub back through every call to that function. each line shows
+the value of your variables at that moment as faint grey text next to the code. no breakpoints, the program is
+never paused.
 
-## idea
+## what you get
 
-pick one function and record it
-wakeline runs your code and traces only that function
-it shows every line that ran with the values at that moment
-then you can step back and forth through a timeline to see how it really works
-supports python javascript typescript go c# c++
+- every call to the function: arguments, the locals after each executed line, the return value or the exception
+- lines that did not run in the selected call are dimmed
+- a timeline panel with a scrubber, play and pause, step back and forward, and a searchable list of calls
+- compare two calls: wakeline finds the first line where they went different ways and says what changed
+- recordings stay on your machine, in vs code's storage folder for the extension
 
-## full breakdown
+## languages
 
-### package.json
-this is the vscode extension manifest
-it lists all commands like wakeline.record_this_function and timeline ones
-sets activation events so the extension wakes up on startup and on those languages
-declares settings for python/node/go/csharp/cpp paths and caps
-points main to extension.js
+| language | status |
+| --- | --- |
+| python | supported, python 3.8 or newer |
+| javascript (`.js`, `.mjs`, `.cjs`) | supported, node 18 or newer |
+| typescript, c#, c++ | experimental, off by default (see below) |
 
-### tsconfig.json
-compiles src/*.ts to out/ with commonjs
-keeps source maps
-esmoduleinterop on
+## install
 
-### src/extension.ts
-main entry point
-activates and sets up status bar output channel and storage
-registers all commands
-adds codelens provider so you can click record next to functions
-handles starting recording finding the function and opening the timeline
-when recording ends it finds the newest jsonl and shows timeline
+install the extension from the marketplace, or from a `.vsix`:
 
-### src/languages.ts
-central registry of all supported languages
-each has id extensions recorder path command args and any prefix needed
-used by run.ts extension.ts and codelens
+```
+code --install-extension wakeline-0.1.0.vsix
+```
 
-### src/run.ts
-builds the command to run the recorder for a language
-resolves interpreter/compiler paths from settings or env
-passes file name lines out caps masked args and env
-spawns the process and tracks it so it can be killed on stop
-handles timeouts and file size limits
+wakeline needs `python3` or `node` on your path for the language you record. nothing else to install.
 
-### src/function_find.ts
-finds which function contains the cursor
-tries vscode document symbol provider first if available
-falls back to text_find.ts regex scanner if symbols not there
+## use
 
-### src/text_find.ts
-pure regex based scanner for all languages
-knows how to find function/method boundaries for python go c# c++ js ts
-uses brace matching and skips comments/strings
-handles go receivers method shorthand in js/ts and c# modifiers
+1. open a python or javascript file inside a folder you trust
+2. put the cursor inside a function and run `record this function` from the right-click menu or the command
+   palette (there is also a `wakeline: record` link above each function)
+3. your program runs from the start of the file. when it ends, the timeline opens
+4. drag the scrubber, or use the step commands, and read the values next to your code
 
-### src/codelens.ts
-vscode codelens provider
-scans for functions in supported languages with regex
-adds "wakeline: record" codelens above each found function
-clicking it uses wakeline.record_at_line to set cursor and record
+keys while the timeline is open: `alt+left` and `alt+right` to step, `alt+p` to play or pause, `alt+c` to compare
+with the previous call, `alt+d` to jump to where two compared calls diverge. all of them are normal commands, so
+you can rebind them.
 
-### src/recording_reader.ts
-reads jsonl files incrementally
-builds index of all calls with line ranges and outcomes
-reads events for a single call range
-strips bom handles partial last line
-enforces max events in memory
+to pass arguments to your program, set `wakeline.run_args`.
 
-### src/format.ts
-defines all jsonl line types ver meta call_start line exception call_end cap_hit failure etc
-validates shape and types
-strips bom from parsed lines
-encodes/decodes values
+## settings
 
-### src/storage.ts
-figures out recordings dir under global storage
-makes safe filenames from language and function name with timestamp
-prunes old recordings per function group by retention
-finds latest recording
+| setting | default | what it does |
+| --- | --- | --- |
+| `wakeline.max_calls` | 100 | calls recorded per run |
+| `wakeline.max_events` | 10000 | line events recorded per call |
+| `wakeline.max_bytes` | 10485760 | size cap for one recording |
+| `wakeline.timeout` | 300000 | stop the program after this many milliseconds |
+| `wakeline.retention` | 10 | recordings kept per function |
+| `wakeline.python_path` | empty | python interpreter, empty means look on path |
+| `wakeline.node_path` | empty | node executable, empty means look on path |
+| `wakeline.run_args` | empty | arguments passed to your program |
+| `wakeline.variable_masking` | empty | names or globs (like `*token*`) whose values are never written to a recording |
+| `wakeline.compare_ignore` | empty | names or globs ignored when comparing calls |
+| `wakeline.experimental_languages` | off | turns on typescript, c# and c++ |
 
-### src/settings.ts
-reads all wakeline settings from vscode config with defaults
+when a cap is hit, recording of that function stops and the timeline says so. your program keeps running.
 
-### src/compare.ts
-compares two calls step by step
-finds first divergence by line or by differing values
-skips ignored variables
+## privacy
 
-### src/timeline_panel.ts
-creates and manages the webview panel
-sends call index and events to webview
-handles stepping compare and jumping to editor lines
-adds a fake step for recorders that only produce call_start/call_end so ui still shows result
+wakeline makes no network calls. recordings are plain json lines files under the extension's storage folder and
+are never uploaded. values from your program are written to those files, so use `wakeline.variable_masking` for
+names that hold secrets. masking matches variable names, so a secret stored under another name, or inside a larger
+value, is not hidden. wakeline refuses to run in an untrusted workspace, because recording means running your
+program.
 
-### src/decorations.ts
-manages inline decorations in the source file for timeline
+## limits
 
-### out/
-compiled js versions of all src/ files
+- one function per run
+- python recording slows a hot function down. the call and event caps exist for this reason
+- a javascript generator records its body steps and a final result, not each yielded value
+- compare lines steps up by position. loops with different iteration counts diverge at the first extra step
+- the timeline loads one whole recording at a time. very large recordings take a while to open
+- experimental languages: c# and c++ record call boundaries only (no line values), typescript needs the
+  `typescript` package to be available and may point at the wrong file. go is not included
 
-### recorders/python/wakeline_recorder.py
-entry for python
-finds target function and traces with sys.settrace
-writes ver meta call_start line events call_end to jsonl
-respects caps and masks
+## build from source
 
-### recorders/python/wk_trace.py
-trace function that captures locals per line and tracks calls
+```
+npm ci
+npm run build
+npm test
+npx @vscode/vsce package
+```
 
-### recorders/python/wk_writer.py
-thread safe writer for jsonl
-
-### recorders/python/wk_encode.py
-safe value encoding for primitives containers and objects
-
-### recorders/javascript/wakeline_recorder.js
-node entry for js
-instruments code with instrument.js or uses runtime hook
-
-### recorders/javascript/instrument.js
-injects tracing code into js functions
-
-### recorders/javascript/runtime.js
-runtime helpers called by instrumented code
-
-### recorders/javascript/writer.js
-jsonl writer for js
-
-### recorders/javascript/encode.js
-value encoding for js
-
-### recorders/javascript/loader.mjs preload.cjs runtime_hook.mjs core.js core.cjs
-module loading and hooking support
-
-### recorders/typescript/wakeline_recorder.js
-transpiles ts to js via typescript api then delegates to javascript recorder
-
-### recorders/go/wakeline_recorder.go
-go recorder
-copies package to temp dir inits go.mod if needed adds dummy main for lib packages
-instruments target function
-builds and runs it writing jsonl via runtime
-
-### recorders/go/go
-compiled binary of the go recorder
-
-### recorders/go/instrument.go encode.go runtime.go writer.go state_extra.go go.mod
-go recorder implementation files
-
-### recorders/csharp/wakeline_recorder.py
-python driver for c#
-instruments the target method adds Wakeline tracing calls
-copies all .cs files from project dir
-compiles with mcs together with wk_csharp_runner.cs
-runs with mono passing env vars for output and caps
-forces a:{} to be object for format compatibility
-
-### recorders/csharp/wk_csharp_runner.cs
-c# runtime linked in during compile
-writes jsonl to wakeline_out
-tracks call stack timing caps
-encodes values and handles exceptions
-
-### recorders/cpp/wakeline_recorder.py
-python driver for c++
-adds credit line "// c++ work by sora - https://github.com/q2hp0"
-includes wk_cpp_runtime.hpp
-copies all .cpp .cc .cxx .hpp .h files from project dir
-instruments target function with wk_enter/wk_end and guard
-compiles with g++ together with wk_cpp_runtime.cpp
-runs binary passing env vars
-
-### recorders/cpp/wk_cpp_runtime.hpp
-c++ runtime header for tracing
-defines WkState and extern functions wk_enter wk_exc wk_end wk_close
-credit line "// c++ work by sora - https://github.com/q2hp0"
-
-### recorders/cpp/wk_cpp_runtime.cpp
-c++ runtime implementation
-writes jsonl in thread safe way
-tracks calls and ensures call_end is written
-credit line "// c++ work by sora - https://github.com/q2hp0"
-
-### webview/timeline.ts
-webview ui for the timeline
-shows call list and steps
-handles stepping compare and selection
-sends messages back to extension
-
-### webview/timeline.css
-styles for timeline ui
-
-### media/
-icons used by the extension
-
-### test/
-tests for format run recorder text_find and fixtures
-
-note: all c++ runtime files must keep the sora credit line intact
+licensed under mit.
