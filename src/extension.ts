@@ -30,12 +30,10 @@ import {
   toggle_play,
 } from "./timeline_panel";
 
-// the extension's front door. commands, the run flow, and the glue between the
-// recorder, the timeline panel and the editor decorations all meet here.
-// anything that needs a vs code api belongs in this file or the modules below.
+// front door
 
 let active: running | undefined;
-let starting = false; // true between "record" being pressed and the child starting
+let starting = false; // gap before active set
 let output: vscode.OutputChannel;
 let status: vscode.StatusBarItem;
 let root = ""; // where this extension is installed, used to find the recorders
@@ -44,19 +42,13 @@ let store = ""; // global storage folder; recordings live under it
 let source: vscode.Uri | undefined; // file the open timeline is showing
 
 export function activate(context: vscode.ExtensionContext) {
-  // push every disposable into subscriptions and let vs code clean up on its
-  // own. i don't want to keep a parallel list of things to unhook.
   root = context.extensionUri.fsPath;
   extension_uri = context.extensionUri;
   store = recordings_dir(context.globalStorageUri.fsPath);
   output = vscode.window.createOutputChannel("wakeline");
-  // the status bar entry is the only always-visible sign that a recording is
-  // happening, so it sits on the left where it is hard to miss.
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
   status.name = "wakeline";
 
-  // tiny wrapper so the block below reads like a list of commands instead of
-  // a wall of registerCommand(...) calls.
   const register = (id: string, fn: any) =>
     vscode.commands.registerCommand(id, fn as any);
 
@@ -102,8 +94,7 @@ export function activate(context: vscode.ExtensionContext) {
       });
       if (id) await compare_with(id.trim());
     }),
-    // moving the cursor in the source file jumps the timeline to the closest
-    // step, but only when the panel is open and the file is the one being shown.
+    // jump timeline on cursor move if panel open
     vscode.window.onDidChangeTextEditorSelection((e) => {
       if (!is_open() || !source) return;
       if (e.textEditor.document.uri.toString() !== source.toString()) return;
