@@ -11,7 +11,7 @@ export class WakelineCodeLensProvider implements vscode.CodeLensProvider {
     const lang = document.languageId;
     const spec = languages.find((l) => l.id === lang);
     if (!spec) return lenses;
-    // experimental languages stay quiet until the user turns them on
+    // hide experimental unless turned on
     if (spec.experimental && !vscode.workspace.getConfiguration("wakeline").get<boolean>("experimental_languages", false)) {
       return lenses;
     }
