@@ -41,11 +41,10 @@ exports.languages = [
         id: "go",
         label: "go",
         extensions: [".go"],
-        recorder: "recorders/go/wakeline_recorder.go",
-        // go run wants the source file after the subcommand and before the flags
-        // that belong to the recorder.
-        prefix: ["run"],
+        recorder: "recorders/go/go",
+        prefix: [],
         command: "go",
+        experimental: true,
     },
     {
         id: "csharp",
